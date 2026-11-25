@@ -1261,6 +1261,64 @@
       gap: 6px;
       margin-top: 6px;
     }
+
+    /* ── Built-in Tag Gloss Hover Tooltip (NASA Minimalist Ceramic) ── */
+    .tag-gloss-tooltip {
+      position: fixed;
+      z-index: 1200;
+      display: none;
+      max-width: 280px;
+      padding: 8px 11px;
+      background: rgba(255, 255, 255, 0.96);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--border-strong);
+      border-top: 2px solid var(--cobalt);
+      border-radius: 9px;
+      box-shadow: 0 10px 26px rgba(15, 23, 42, 0.13), 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+      pointer-events: none;
+      color: var(--text);
+      line-height: 1.45;
+    }
+    .tag-gloss-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 2px;
+    }
+    .tag-gloss-zh {
+      font-size: 13px;
+      font-weight: 650;
+      color: var(--text);
+    }
+    .tag-gloss-en {
+      font-size: 10.5px;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 150px;
+    }
+    .tag-gloss-desc {
+      font-size: 11.5px;
+      color: var(--text-sub);
+      margin-top: 2px;
+    }
+    .tag-gloss-hint {
+      font-size: 10.5px;
+      color: var(--muted);
+      margin-top: 4px;
+      padding-top: 4px;
+      border-top: 1px dashed var(--border);
+    }
+    [data-tag-gloss] {
+      cursor: help;
+    }
+    button[data-tag-gloss], .pill-toggle[data-tag-gloss] {
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -2006,6 +2064,7 @@
   <div id="lightbox" class="lightbox">
     <img id="lightboxImg" alt="放大预览" />
   </div>
+  <div id="tagGlossTip" class="tag-gloss-tooltip" aria-hidden="true"></div>
 
   <script>
     const state = {
@@ -2016,6 +2075,8 @@
       timerSync: null,
       renderedBatchKey: null,
       config: null,
+      tagDict: {},
+      tagDictLoaded: false,
       loras: [],
       lorasLoaded: false,
       remoteLoras: [],
@@ -2661,7 +2722,8 @@
         }
 
         btn.innerHTML = `<span>${inUse ? "✓ " : ""}${esc(t.tag)}</span> <span class="mono" style="opacity:0.75;">${esc(metaText)}</span>`;
-        btn.title = inUse ? "点击移除" : isNeg ? "点击加入负向 Prompt" : "点击加入正向 Prompt";
+        btn.dataset.tagGloss = t.tag;
+        btn.dataset.tagHint = inUse ? "点击移除" : isNeg ? "点击加入负向 Prompt" : "点击加入正向 Prompt";
         btn.addEventListener("click", async () => {
           if (isNeg && !inUse && onBeforeAddNegative) {
             await onBeforeAddNegative();
@@ -3141,7 +3203,7 @@
           explore_slot: "探索·",
         };
         const srcPrefix = srcMap[st.source] || "";
-        return `<span class="tag-chip${hitCls}${roleCls}">#${st.position} [${esc(srcPrefix + st.slot)}] <strong>${esc(st.tag)}</strong> <span class="mono">z=${Number(st.z_score).toFixed(2)}${synText}${confText}</span></span>`;
+        return `<span class="tag-chip${hitCls}${roleCls}" data-tag-gloss="${esc(st.tag)}">#${st.position} [${esc(srcPrefix + st.slot)}] <strong>${esc(st.tag)}</strong> <span class="mono">z=${Number(st.z_score).toFixed(2)}${synText}${confText}</span></span>`;
       }).join("");
       const d1Summary = pm === "manual"
         ? `本次自定 Prompt 与命中词池 (${(g.sampled_tags || []).length} 个命中词)`
@@ -3181,10 +3243,10 @@
       // 折叠面板 2：WD14 识图与新涌现词
       const d2 = document.createElement("details");
       const emergentHtml = (g.emergent_tags || []).map((et) =>
-        `<span class="tag-chip new">+ 新词 <strong>${esc(et.tag)}</strong> <span class="mono">${(et.score * 100).toFixed(0)}%</span></span>`
+        `<span class="tag-chip new" data-tag-gloss="${esc(et.tag)}">+ 新词 <strong>${esc(et.tag)}</strong> <span class="mono">${(et.score * 100).toFixed(0)}%</span></span>`
       ).join("");
       const detHtml = (g.detected_tags || []).slice(0, 24).map((dt) =>
-        `<span class="tag-chip">${esc(dt.tag)} <span class="mono">${(dt.score * 100).toFixed(0)}%</span></span>`
+        `<span class="tag-chip" data-tag-gloss="${esc(dt.tag)}">${esc(dt.tag)} <span class="mono">${(dt.score * 100).toFixed(0)}%</span></span>`
       ).join("");
       d2.innerHTML = `
         <summary>WD14 识图结果 (新涌现 ${(g.emergent_tags || []).length} 个 · 共识别 ${(g.detected_tags || []).length} 个)</summary>
@@ -3391,7 +3453,7 @@
           const execText = t.exec_rate === null ? "-" : `${(t.exec_rate * 100).toFixed(0)}% (${t.exec_hits}/${t.exec_trials})`;
           const obsText = t.observed_count > 0 ? `${t.observed_count} 次 / ${Number(t.observed_gain).toFixed(3)}` : "-";
           tr.innerHTML = `
-            <td><strong>${esc(t.tag)}</strong></td>
+            <td><strong data-tag-gloss="${esc(t.tag)}">${esc(t.tag)}</strong></td>
             <td></td>
             <td style="color:var(--muted);">${esc(t.cluster)}</td>
             <td><span class="badge">${esc(t.stage)}</span></td>
@@ -3958,7 +4020,8 @@
           ? "[观察池]"
           : "[新词]";
       btn.innerHTML = `<span>${esc(pt.tag)}</span> <span style="opacity:0.75;">${esc(tagMeta)}</span> <span class="mono">${pct}%</span>`;
-      btn.title = active ? "点击排除" : "点击恢复";
+      btn.dataset.tagGloss = pt.tag;
+      btn.dataset.tagHint = active ? "点击排除" : "点击恢复";
       btn.addEventListener("click", () => {
         if (state.external.applied || state.external.busy) return;
         if (state.external.selectedSet.has(pt.tag)) {
@@ -4374,7 +4437,7 @@
         $("manWd14Summary").textContent = `WD14 识别结果（共 ${dtags.length} 个，仅查看不影响权重）`;
         $("manWd14Pills").innerHTML = dtags
           .slice(0, 30)
-          .map((d) => `<span class="tag-chip">${esc(d.tag)} <span class="mono">${Math.round(d.score * 100)}%</span></span>`)
+          .map((d) => `<span class="tag-chip" data-tag-gloss="${esc(d.tag)}">${esc(d.tag)} <span class="mono">${Math.round(d.score * 100)}%</span></span>`)
           .join("");
         wdDetails.style.display = "block";
       } else {
@@ -5763,7 +5826,8 @@
           chip.className = "pill-toggle matched";
           chip.style.padding = "3px 8px";
           chip.innerHTML = `<span>${esc(t)}</span> <span style="opacity:0.75;">×</span>`;
-          chip.title = "点击从星群篮移除";
+          chip.dataset.tagGloss = t;
+          chip.dataset.tagHint = "点击从星群篮移除";
           chip.addEventListener("click", () => toggleBasket(t));
           wrap.appendChild(chip);
         }
@@ -5790,6 +5854,7 @@
           const col = SLOT_COLORS[sl] || SLOT_COLORS.discovered;
           const chip = document.createElement("span");
           chip.className = "triad-chip";
+          chip.dataset.tagGloss = tag;
           chip.innerHTML = `<span class="slot-legend-dot" style="width:6px; height:6px; background:${esc(col)};"></span><span>${esc(tag)}</span>`;
           chipsWrap.appendChild(chip);
         });
@@ -5861,7 +5926,12 @@
         top.style.cssText = "display:flex; justify-content:space-between; align-items:center; gap:6px;";
         const nameEl = document.createElement("strong");
         nameEl.style.cssText = "font-size:12.5px; color:var(--text);";
-        nameEl.textContent = partner;
+        if (showBothNames) {
+          nameEl.innerHTML = `<span data-tag-gloss="${esc(edge.source)}">${esc(edge.source)}</span> + <span data-tag-gloss="${esc(edge.target)}">${esc(edge.target)}</span>`;
+        } else {
+          nameEl.dataset.tagGloss = partner;
+          nameEl.textContent = partner;
+        }
 
         const right = document.createElement("div");
         right.style.cssText = "display:flex; align-items:center; gap:5px; flex-shrink:0;";
@@ -6079,11 +6149,19 @@
         }
         if (sm.hoveredNode) {
           const n = sm.hoveredNode;
+          const g = lookupTagGloss(n.tag);
+          const glossHtml = g
+            ? `<div style="margin-bottom:5px; padding-bottom:4px; border-bottom:1px dashed var(--border);">
+                 <div style="font-size:12.5px; font-weight:650; color:var(--text);">${esc(g.zh)}</div>
+                 ${g.desc ? `<div style="font-size:11px; color:var(--text-sub); margin-top:1px;">${esc(g.desc)}</div>` : ""}
+               </div>`
+            : "";
           tip.innerHTML = `
             <div style="display:flex; justify-content:space-between; gap:8px; margin-bottom:4px;">
               <strong style="color:${esc(n.color)};">${esc(n.tag)}</strong>
               <span class="mono" style="color:var(--muted);">[${esc(n.slot)}]</span>
             </div>
+            ${glossHtml}
             <div class="mono" style="font-size:11.5px;">
               Z-score: ${Number(n.z_score).toFixed(2)} · 均分: ${Number(n.mean_rating).toFixed(2)}<br/>
               关联拍档: ${n.visDegree} 个 · 最高相性: ${n.visBestAff > 0 ? "+" : ""}${Number(n.visBestAff).toFixed(2)}
@@ -6094,10 +6172,16 @@
           const e = sm.hoveredEdge;
           const isClash = e.kind === "clash";
           const confPct = Math.round(Number(e.confidence ?? (e.co_count / (e.co_count + 3))) * 100);
+          const gs = lookupTagGloss(e.source);
+          const gt = lookupTagGloss(e.target);
+          const pairZh = (gs || gt)
+            ? `<div style="font-size:11.5px; color:var(--text-sub); margin-bottom:4px;">${esc(gs ? gs.zh : e.source)} ✦ ${esc(gt ? gt.zh : e.target)}</div>`
+            : "";
           tip.innerHTML = `
-            <div style="font-weight:650; color:${isClash ? "var(--danger)" : "var(--accent)"}; margin-bottom:4px;">
+            <div style="font-weight:650; color:${isClash ? "var(--danger)" : "var(--accent)"}; margin-bottom:2px;">
               ${esc(e.source)}  ✦  ${esc(e.target)}
             </div>
+            ${pairZh}
             <div class="mono" style="font-size:11.5px;">
               共现 ${e.co_count} 次 (置信 ${confPct}%) · 均分 ${e.mean_rating > 0 ? "+" : ""}${Number(e.mean_rating).toFixed(2)}<br/>
               超额相性 ${e.synergy > 0 ? "+" : ""}${Number(e.synergy).toFixed(2)} · 综合相性 ${e.affinity > 0 ? "+" : ""}${Number(e.affinity).toFixed(2)}
@@ -6429,7 +6513,117 @@
       }
     });
 
+    const TAG_KAOMOJI_SET = new Set(["0_0", "(o)_(o)", "+_+", "+_-", "._.", "<o>_<o>", "<|>_<|>", "=_=", ">_<", "3_3", "6_9", ">_o", "@_@", "^_^", "o_o", "u_u", "x_x", "|_|", "||_||"]);
+
+    function normalizeTagKey(tag) {
+      const s = String(tag || "").trim().toLowerCase();
+      if (!s) return "";
+      return TAG_KAOMOJI_SET.has(s) ? s : s.replace(/_/g, " ");
+    }
+
+    function lookupTagGloss(tag) {
+      const key = normalizeTagKey(tag);
+      if (!key) return null;
+      const val = state.tagDict[key];
+      if (!val) return null;
+      if (typeof val === "string") return { zh: val, desc: "" };
+      if (Array.isArray(val) && val.length > 0) {
+        return { zh: String(val[0] || ""), desc: String(val[1] || "") };
+      }
+      return null;
+    }
+
+    async function loadTagDict() {
+      if (state.tagDictLoaded) return;
+      try {
+        const res = await fetch("/api/tag_dict");
+        if (!res.ok) return;
+        const data = await res.json();
+        state.tagDict = data && typeof data.entries === "object" && data.entries ? data.entries : {};
+        state.tagDictLoaded = true;
+      } catch (_err) {
+        // Offline / missing dict degrades gracefully without interrupting workbench
+      }
+    }
+
+    (function initTagGlossTooltip() {
+      const tip = $("tagGlossTip");
+      let activeEl = null;
+
+      function positionTip(ev) {
+        const pad = 14;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const w = tip.offsetWidth || 220;
+        const h = tip.offsetHeight || 60;
+        let left = ev.clientX + pad;
+        let top = ev.clientY + pad;
+        if (left + w + 10 > vw) left = Math.max(8, ev.clientX - w - pad);
+        if (top + h + 10 > vh) top = Math.max(8, ev.clientY - h - pad);
+        tip.style.left = left + "px";
+        tip.style.top = top + "px";
+      }
+
+      function hideTip() {
+        activeEl = null;
+        tip.style.display = "none";
+      }
+
+      document.addEventListener("mouseover", (ev) => {
+        const target = ev.target && ev.target.closest ? ev.target.closest("[data-tag-gloss]") : null;
+        if (!target) {
+          if (activeEl) hideTip();
+          return;
+        }
+        if (target === activeEl) return;
+        const rawTag = target.dataset.tagGloss || "";
+        const hint = target.dataset.tagHint || "";
+        const g = lookupTagGloss(rawTag);
+        if (!g && !hint) {
+          hideTip();
+          return;
+        }
+        activeEl = target;
+        if (g) {
+          tip.innerHTML = `
+            <div class="tag-gloss-head">
+              <span class="tag-gloss-zh">${esc(g.zh)}</span>
+              <span class="tag-gloss-en">${esc(rawTag)}</span>
+            </div>
+            ${g.desc ? `<div class="tag-gloss-desc">${esc(g.desc)}</div>` : ""}
+            ${hint ? `<div class="tag-gloss-hint">${esc(hint)}</div>` : ""}
+          `;
+        } else {
+          tip.innerHTML = `
+            <div class="tag-gloss-head">
+              <span class="tag-gloss-en" style="max-width:none; color:var(--text);">${esc(rawTag)}</span>
+            </div>
+            <div class="tag-gloss-hint" style="border-top:none; padding-top:0; margin-top:2px;">${esc(hint)}</div>
+          `;
+        }
+        tip.style.display = "block";
+        positionTip(ev);
+      });
+
+      document.addEventListener("mousemove", (ev) => {
+        if (!activeEl || tip.style.display === "none") return;
+        positionTip(ev);
+      });
+
+      document.addEventListener("mouseout", (ev) => {
+        if (!activeEl) return;
+        const rel = ev.relatedTarget;
+        if (rel && activeEl.contains(rel)) return;
+        if (rel && rel.closest && rel.closest("[data-tag-gloss]") === activeEl) return;
+        hideTip();
+      });
+
+      window.addEventListener("scroll", hideTip, true);
+      window.addEventListener("blur", hideTip);
+    })();
+
     StarMapApp.init();
+    loadTagDict();
     ensureConfigLoaded();
     refreshStatus();
     loadLatestBatch();

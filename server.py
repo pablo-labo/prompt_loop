@@ -26,6 +26,7 @@ from tagger import LocalWDTagger
 BASE_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = BASE_DIR / "config.json"
 CONFIG_EXAMPLE_PATH = BASE_DIR / "config.example.json"
+TAG_DICT_PATH = BASE_DIR / "tag_dict.json"
 WEB_INDEX_PATH = BASE_DIR / "web" / "index.html"
 DATA_DIR = BASE_DIR / "data"
 DB_PATH = DATA_DIR / "loop.db"
@@ -66,6 +67,8 @@ class PromptLoopApp:
         self._timing_lock = threading.Lock()
         self._batch_timing: dict[int, dict[str, Any]] = {}
         self._manual_timing: dict[int, dict[str, Any]] = {}
+        self._tag_dict_lock = threading.Lock()
+        self._tag_dict_cache: tuple[float, bytes] | None = None
         self.storage = LoopStorage(DB_PATH)
         self._cleanup_orphaned_batches()
         self.tagger = LocalWDTagger()
@@ -153,6 +156,17 @@ class PromptLoopApp:
         with self._cfg_lock:
             self._ensure_config_exists()
             return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+
+    def load_tag_dict_bytes(self) -> bytes:
+        with self._tag_dict_lock:
+            if not TAG_DICT_PATH.is_file():
+                return b'{"entries":{}}'
+            mtime = TAG_DICT_PATH.stat().st_mtime
+            if self._tag_dict_cache is not None and self._tag_dict_cache[0] == mtime:
+                return self._tag_dict_cache[1]
+            raw = TAG_DICT_PATH.read_bytes()
+            self._tag_dict_cache = (mtime, raw)
+            return raw
 
     @staticmethod
     def _normalize_loras(raw_loras: Any) -> list[dict[str, Any]]:
@@ -722,6 +736,16 @@ def make_handler(app: PromptLoopApp) -> type[BaseHTTPRequestHandler]:
 
             if path == "/api/config":
                 self._send_json(HTTPStatus.OK, app.load_config())
+                return
+
+            if path == "/api/tag_dict":
+                raw_bytes = app.load_tag_dict_bytes()
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(raw_bytes)))
+                self.send_header("Cache-Control", "public, max-age=3600")
+                self.end_headers()
+                self.wfile.write(raw_bytes)
                 return
 
             if path == "/api/loras":

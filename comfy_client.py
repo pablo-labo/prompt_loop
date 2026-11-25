@@ -1,6 +1,7 @@
 import copy
 import hashlib
 import io
+import ipaddress
 import json
 import time
 import urllib.error
@@ -11,6 +12,17 @@ from pathlib import Path
 from typing import Any
 
 from PIL import Image, ImageDraw
+
+
+def _should_bypass_proxy(base_url: str) -> bool:
+    host = (urllib.parse.urlparse(base_url).hostname or "").strip().lower()
+    if not host or host in ("localhost", "0.0.0.0", "::1") or host.endswith(".local"):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+        return ip.is_loopback or ip.is_private or ip.is_link_local
+    except ValueError:
+        return False
 
 
 class ComfyClient:
@@ -26,11 +38,16 @@ class ComfyClient:
         self.workflow_path = workflow_path
         self.node_map = node_map
         self.client_id = str(uuid.uuid4())
+        self._opener = (
+            urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            if _should_bypass_proxy(self.base_url)
+            else urllib.request.build_opener()
+        )
 
     def check_health(self) -> dict[str, Any]:
         url = f"{self.base_url}/system_stats"
         try:
-            with urllib.request.urlopen(url, timeout=3.0) as resp:
+            with self._opener.open(url, timeout=3.0) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 return {
                     "ok": True,
@@ -53,7 +70,7 @@ class ComfyClient:
     def list_loras(self) -> dict[str, Any]:
         # 1. 优先请求 /models/loras
         try:
-            with urllib.request.urlopen(f"{self.base_url}/models/loras", timeout=5.0) as resp:
+            with self._opener.open(f"{self.base_url}/models/loras", timeout=5.0) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 if isinstance(data, list):
                     names = sorted({str(x).strip() for x in data if str(x).strip()})
@@ -63,7 +80,7 @@ class ComfyClient:
 
         # 2. 回退 /object_info/LoraLoaderModelOnly
         try:
-            with urllib.request.urlopen(
+            with self._opener.open(
                 f"{self.base_url}/object_info/LoraLoaderModelOnly", timeout=5.0
             ) as resp:
                 info = json.loads(resp.read().decode("utf-8"))
@@ -225,7 +242,7 @@ class ComfyClient:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=15.0) as resp:
+            with self._opener.open(req, timeout=15.0) as resp:
                 queued = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="ignore")
@@ -243,7 +260,7 @@ class ComfyClient:
 
         while time.perf_counter() < deadline:
             time.sleep(0.8)
-            with urllib.request.urlopen(
+            with self._opener.open(
                 f"{self.base_url}/history/{prompt_id}", timeout=10.0
             ) as resp:
                 history = json.loads(resp.read().decode("utf-8"))
@@ -279,7 +296,7 @@ class ComfyClient:
                 "type": image_meta.get("type", "output"),
             }
         )
-        with urllib.request.urlopen(f"{self.base_url}/view?{query}", timeout=30.0) as resp:
+        with self._opener.open(f"{self.base_url}/view?{query}", timeout=30.0) as resp:
             image_bytes = resp.read()
 
         elapsed_ms = round((time.perf_counter() - t0) * 1000.0, 1)
