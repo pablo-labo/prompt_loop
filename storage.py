@@ -263,6 +263,92 @@ class LoopStorage:
                 )
             return True
 
+    def seed_from_library_if_empty(self, lib: dict[str, Any]) -> bool:
+        """Populate an empty database from a bundled seed_library.json snapshot."""
+        with self.transaction() as conn:
+            cnt = conn.execute("SELECT COUNT(*) AS c FROM tag_stats").fetchone()["c"]
+            if cnt > 0:
+                return False
+            now = utc_now_iso()
+            for cl in lib.get("clusters", []):
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO cluster_stats(cluster, slot, label, count, reward_sum, weight)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        str(cl["cluster"]),
+                        str(cl["slot"]),
+                        str(cl["label"]),
+                        int(cl.get("count", 0)),
+                        float(cl.get("reward_sum", 0.0)),
+                        float(cl.get("weight", 0.0)),
+                    ),
+                )
+            for t in lib.get("tags", []):
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO tag_stats(
+                        tag, slot, cluster, stage,
+                        active_count, active_reward_sum,
+                        observed_count, observed_eff_count, observed_gain_sum,
+                        exec_hits, exec_trials,
+                        rating_count, rating_eff_count, rating_sum, mean_rating,
+                        weight, z_score, last_used_round, consecutive_uses, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        str(t["tag"]),
+                        str(t["slot"]),
+                        str(t["cluster"]),
+                        str(t.get("stage", "staging")),
+                        int(t.get("active_count", 0)),
+                        float(t.get("active_reward_sum", 0.0)),
+                        int(t.get("observed_count", 0)),
+                        float(t.get("observed_eff_count", 0.0)),
+                        float(t.get("observed_gain_sum", 0.0)),
+                        int(t.get("exec_hits", 0)),
+                        int(t.get("exec_trials", 0)),
+                        int(t.get("rating_count", 0)),
+                        float(t.get("rating_eff_count", 0.0)),
+                        float(t.get("rating_sum", 0.0)),
+                        float(t.get("mean_rating", 0.0)),
+                        float(t.get("weight", 0.0)),
+                        float(t.get("z_score", 0.0)),
+                        int(t.get("last_used_round", 0)),
+                        int(t.get("consecutive_uses", 0)),
+                        now,
+                    ),
+                )
+            for p in lib.get("pairs", []):
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO tag_pair_stats(
+                        tag_a, tag_b, co_count, eff_count,
+                        rating_sum, synergy_sum, mean_rating, synergy, affinity, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        str(p["tag_a"]),
+                        str(p["tag_b"]),
+                        int(p.get("co_count", 0)),
+                        float(p.get("eff_count", 0.0)),
+                        float(p.get("rating_sum", 0.0)),
+                        float(p.get("synergy_sum", 0.0)),
+                        float(p.get("mean_rating", 0.0)),
+                        float(p.get("synergy", 0.0)),
+                        float(p.get("affinity", 0.0)),
+                        now,
+                    ),
+                )
+            meta = lib.get("meta") or {}
+            if "round_num" in meta:
+                self.set_meta("round_num", str(meta["round_num"]), conn=conn)
+            if "reward_ema" in meta:
+                self.set_meta("reward_ema", str(meta["reward_ema"]), conn=conn)
+            self.set_meta("seeded_from_library", "1", conn=conn)
+            return True
+
     def create_batch(
         self,
         mode: str,

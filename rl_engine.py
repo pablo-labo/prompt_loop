@@ -1,6 +1,7 @@
 import json
 import math
 import random
+from pathlib import Path
 from typing import Any
 
 from storage import LoopStorage, utc_now_iso
@@ -218,6 +219,21 @@ def _compute_pair_metrics(
     return round(mean_r, 6), round(synergy, 6), round(affinity, 6)
 
 
+SEED_LIBRARY_PATH = Path(__file__).resolve().parent / "seed_library.json"
+
+
+def _load_seed_library() -> dict[str, Any] | None:
+    if not SEED_LIBRARY_PATH.is_file():
+        return None
+    try:
+        data = json.loads(SEED_LIBRARY_PATH.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and isinstance(data.get("tags"), list) and data["tags"]:
+            return data
+    except Exception:
+        return None
+    return None
+
+
 class RLEngine:
     """Slot-normalized RL / Bandit prompt evolution and WD14 difference mining."""
 
@@ -225,6 +241,9 @@ class RLEngine:
         self.storage = storage
         self.tagger = tagger
         self._seed_lookup = build_seed_lookup(SEED_TAGS)
+        seed_lib = _load_seed_library()
+        if seed_lib is not None:
+            self.storage.seed_from_library_if_empty(seed_lib)
         self.storage.seed_initial_tags_if_empty(CLUSTER_DEFS, SEED_TAGS)
         self.storage.ensure_clusters(CLUSTER_DEFS)
         if self.storage.get_pair_count() == 0:
@@ -1437,6 +1456,22 @@ class RLEngine:
             obs_gsum: dict[str, float] = {}
             running_ema = 0.0
 
+            if self.storage.get_meta("seeded_from_library", "0") == "1":
+                seed_lib = _load_seed_library()
+                if seed_lib is not None:
+                    running_ema = float((seed_lib.get("meta") or {}).get("reward_ema", 0.0))
+                    for st in seed_lib.get("tags", []):
+                        canon = tag_lower_map.get(str(st.get("tag", "")).strip().lower())
+                        if canon is None:
+                            continue
+                        oc = int(st.get("observed_count", 0))
+                        oe = float(st.get("observed_eff_count", 0.0))
+                        og = float(st.get("observed_gain_sum", 0.0))
+                        if oc > 0 or oe > 0.0:
+                            obs_cnt[canon] = oc
+                            obs_eff[canon] = oe
+                            obs_gsum[canon] = og
+
             for batch_idx, batch_gens in enumerate(batches_by_id.values()):
                 if batch_idx > 0:
                     for t in list(obs_eff.keys()):
@@ -1535,6 +1570,27 @@ class RLEngine:
             p_ssum: dict[tuple[str, str], float] = {}
 
             running_ema = 0.0
+            if self.storage.get_meta("seeded_from_library", "0") == "1":
+                seed_lib = _load_seed_library()
+                if seed_lib is not None:
+                    running_ema = float((seed_lib.get("meta") or {}).get("reward_ema", 0.0))
+                    for st in seed_lib.get("tags", []):
+                        canon = tag_lower_map.get(str(st.get("tag", "")).strip().lower())
+                        if canon is None:
+                            continue
+                        t_cnt[canon] = int(st.get("rating_count", 0))
+                        t_eff[canon] = float(st.get("rating_eff_count", 0.0))
+                        t_rsum[canon] = float(st.get("rating_sum", 0.0))
+                    for sp in seed_lib.get("pairs", []):
+                        ca = tag_lower_map.get(str(sp.get("tag_a", "")).strip().lower())
+                        cb = tag_lower_map.get(str(sp.get("tag_b", "")).strip().lower())
+                        if ca is None or cb is None or ca == cb:
+                            continue
+                        pk = _pair_key(ca, cb)
+                        p_cnt[pk] = int(sp.get("co_count", 0))
+                        p_eff[pk] = float(sp.get("eff_count", 0.0))
+                        p_rsum[pk] = float(sp.get("rating_sum", 0.0))
+                        p_ssum[pk] = float(sp.get("synergy_sum", 0.0))
             for batch_idx, batch_gens in enumerate(batches_by_id.values()):
                 if batch_idx > 0:
                     for t in t_eff:
@@ -2067,6 +2123,7 @@ class RLEngine:
                 conn.execute("DELETE FROM tag_pair_stats")
                 self.storage.set_meta("round_num", "0", conn=conn)
                 self.storage.set_meta("reward_ema", "0.0", conn=conn)
+                self.storage.set_meta("seeded_from_library", "0", conn=conn)
                 return {"ok": True, "action": action}
 
             if action == "reclassify":
