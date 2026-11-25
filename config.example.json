@@ -1,0 +1,51 @@
+{
+  "comfy_url": "http://127.0.0.1:8188",
+  "mock_mode": false,
+  "enable_wd14": true,
+  "batch_size": 2,
+  "workflow_path": "workflows/anima_base_skp.json",
+  "workflow_nodes": {
+    "unet": "1",
+    "positive": "4",
+    "negative": "5",
+    "latent": "6",
+    "sampler": "7",
+    "save": "9",
+    "lora": "10"
+  },
+  "generation": {
+    "width": 748,
+    "height": 512,
+    "steps": 30,
+    "cfg": 4
+  },
+  "loras": [],
+  "fixed_prefix": "masterpiece, best quality, score_7, score_8, very aesthetic, absurdres, highres, 1girl",
+  "negative_base": "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, bad anatomy, extra limbs, extra fingers, artist name, watermark, text",
+  "rl": {
+    "prior_m": 3.0,
+    "cluster_prior_alpha": 0.25,
+    "ucb_beta": 0.45,
+    "weight_decay": 0.985,
+    "cooldown_rounds": 3,
+    "cooldown_penalty": 0.45,
+    "temp_start": 1.2,
+    "temp_min": 0.55,
+    "temp_decay_rounds": 40,
+    "max_prob_cap": 0.45,
+    "dropout_prob": 0.25,
+    "auto_promote": true,
+    "promote_min_obs": 2,
+    "promote_min_gain": 0.25,
+    "max_auto_negatives": 10,
+    "synergy_weight": 0.55,
+    "target_tag_min": 5,
+    "target_tag_max": 8,
+    "explore_slots_per_img": 1,
+    "explore_wip_limit": 25,
+    "contrast_prob": 0.5,
+    "contrast_same_seed": true,
+    "pair_explore_beta": 0.25,
+    "pair_decay": 0.997
+  }
+}

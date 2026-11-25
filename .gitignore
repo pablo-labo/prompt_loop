@@ -1,0 +1,28 @@
+# Runtime data, user config & generated media (never commit personal data/history)
+data/
+*.db
+*.db-shm
+*.db-wal
+config.json
+
+# Large local model weights
+models/
+*.onnx
+*.safetensors
+*.ckpt
+*.pt
+
+# Python & virtualenvs
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# macOS / Editor
+.DS_Store
+*.swp
+*.swo
+.vscode/
+.idea/
